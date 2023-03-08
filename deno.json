@@ -1,0 +1,8 @@
+{
+	"tasks": {
+		"test": "deno test --watch --allow-all ./Encoder.test.js",
+		"minifyJson": "deno run --watch --allow-all ./minifyJson.ts"
+	},
+	"importMap": "./import_map.json",
+	"compilerOptions": {}
+}
