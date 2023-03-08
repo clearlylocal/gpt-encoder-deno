@@ -1,5 +1,5 @@
-declare module "gpt-3-encoder" {
-  export function encode(text: string): number[];
+declare module 'gpt-3-encoder' {
+	export function encode(text: string): number[]
 
-  export function decode(tokens: number[]): string;
+	export function decode(tokens: number[]): string
 }
