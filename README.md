@@ -1,27 +1,38 @@
 # GPT-3-Encoder Deno
 
-Deno-optimized fork of https://github.com/latitudegames/GPT-3-Encoder
-
-Javascript BPE Encoder Decoder for GPT-2/GPT-3
+Deno-optimized fork of https://github.com/latitudegames/GPT-3-Encoder, a JavaScript BPE Encoder Decoder for GPT-2/GPT-3.
 
 ## About
 
-GPT-2 and GPT-3 use byte pair encoding to turn text into a series of integers to feed into the model. This is a javascript implementation of OpenAI's original python encoder/decoder which can be found [here](https://github.com/openai/gpt-2).
+GPT-2 and GPT-3 use byte pair encoding to turn text into a series of integers to feed into the model. This is a JS implementation of OpenAI's original python encoder/decoder which can be found [here](https://github.com/openai/gpt-2).
 
 ## Usage
 
+For convenience, you can add `gpt-encoder-deno` to your `import_map.json` and set it to the current version (e.g. `https://esm.sh/gh/clearlylocal/gpt-encoder-deno@v2.0.0`).
+
 ```ts
-const { encode, decode } = require('gpt-3-encoder')
+import { assertEquals } from 'https://deno.land/std@0.184.0/testing/asserts.ts'
+import { encode, decode } from 'gpt-encoder-deno/mod.ts'
+import tokenMapping from 'gpt-encoder-deno/token-mapping-gpt3.json' assert { type: 'json' }
+const bpe = await (await fetch(import.meta.resolve('gpt-encoder-deno/vocab-gpt3.bpe'))).text()
 
-const str = 'This is an example sentence to try encoding out on!'
-const encoded = encode(str)
-console.log('Encoded this string looks like: ', encoded)
+const str = 'my example string 🦄'
+const encoded = encode(str, { tokenMapping, bpe })
 
-console.log('We can look at each token and what it represents')
-for (let token of encoded) {
-	console.log({ token, string: decode([token]) })
+assertEquals(encoded, [1820, 1672, 4731, 12520, 99, 226])
+
+for (const [idx, data] of [
+	{ token: 1820, string: 'my' },
+	{ token: 1672, string: ' example' },
+	{ token: 4731, string: ' string' },
+	{ token: 12520, string: ' �' },
+	{ token: 99, string: '�' },
+	{ token: 226, string: '�' },
+].entries()) {
+	const token = encoded[idx]
+	assertEquals(data, { token, string: decode([token], { tokenMapping }) })
 }
 
-const decoded = decode(encoded)
-console.log('We can decode it back into:\n', decoded)
+const decoded = decode(encoded, { tokenMapping })
+assertEquals(decoded, str)
 ```

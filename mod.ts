@@ -1,1 +1,1 @@
-export { encode, decode } from './Encoder.js'
+export { encode, decode } from './codec.js'
