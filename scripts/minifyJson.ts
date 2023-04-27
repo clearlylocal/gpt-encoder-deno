@@ -1,5 +1,7 @@
 #!/usr/bin/env -S deno run --allow-read --allow-write
 
-const tokenMapping = await (await fetch(import.meta.resolve('../tokenMapping.json'))).json()
+const filePath = import.meta.resolve('../token-mapping-gpt3.json')
 
-await Deno.writeTextFile('./tokenMapping.json', JSON.stringify(tokenMapping))
+const tokenMapping = await (await fetch(filePath)).json()
+
+await Deno.writeTextFile(new URL(filePath), JSON.stringify(tokenMapping))

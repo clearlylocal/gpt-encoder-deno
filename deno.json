@@ -1,7 +1,7 @@
 {
 	"tasks": {
-		"test": "deno test --watch --allow-all ./Encoder.test.js",
-		"minifyJson": "deno run --watch --allow-all ./minifyJson.ts"
+		"test": "deno test --watch -A ./codec.test.ts",
+		"minifyJson": "deno run -A ./scripts/minifyJson.ts"
 	},
 	"importMap": "./import_map.json",
 	"compilerOptions": {}

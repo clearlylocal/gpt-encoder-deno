@@ -1,2 +1,2 @@
-vocab.bpe
-encoder.json
+vocab-*.bpe
+token-mapping-*.json
