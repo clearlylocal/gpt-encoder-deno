@@ -1,1 +1,1 @@
-export { encode, decode } from './codec.ts'
+export { encode, decode, tokenLength, pairToKeyable, getBpeRankFrom, getTokenFrom, getWordFrom, getBpePairs } from './codec.ts'

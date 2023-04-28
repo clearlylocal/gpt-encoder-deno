@@ -1,7 +1,10 @@
 import tokenMapping from './token-mapping-gpt3.json' assert { type: 'json' }
-import { encode, decode } from './codec.ts'
+import { encode, decode, tokenLength, getBpeRankFrom, getTokenFrom, getWordFrom } from './mod.ts'
 import { assertEquals } from 'https://deno.land/std@0.184.0/testing/asserts.ts'
-const bpe = await (await fetch(import.meta.resolve('./vocab-gpt3.bpe'))).text()
+
+const getToken = getTokenFrom(tokenMapping)
+const getWord = getWordFrom(tokenMapping)
+const getBpeRank = getBpeRankFrom(await (await fetch(import.meta.resolve('./vocab-gpt3.bpe'))).text())
 
 Deno.test('docs', async (t) => {
 	const docFiles = ['./README.md']
@@ -22,46 +25,119 @@ Deno.test('docs', async (t) => {
 	}
 })
 
-Deno.test('empty string', () => {
+Deno.test('empty string', async () => {
 	const str = ''
-	assertEquals(encode(str, { tokenMapping, bpe }), [])
-	assertEquals(decode(encode(str, { tokenMapping, bpe }), { tokenMapping }), str)
+
+	const expectedTokens: number[] = []
+	const encoded = await encode(str, { getToken, getBpeRank })
+	const decoded = await decode(encoded, { getWord })
+	const len = await tokenLength(str, { getBpeRank })
+
+	assertEquals(encoded, expectedTokens)
+	assertEquals(decoded, str)
+	assertEquals(len, expectedTokens.length)
 })
 
-Deno.test('space', () => {
+Deno.test('space', async () => {
 	const str = ' '
-	assertEquals(encode(str, { tokenMapping, bpe }), [220])
-	assertEquals(decode(encode(str, { tokenMapping, bpe }), { tokenMapping }), str)
+
+	const expectedTokens = [220]
+	const encoded = await encode(str, { getToken, getBpeRank })
+	const decoded = await decode(encoded, { getWord })
+	const len = await tokenLength(str, { getBpeRank })
+
+	assertEquals(encoded, expectedTokens)
+	assertEquals(decoded, str)
+	assertEquals(len, expectedTokens.length)
 })
 
-Deno.test('tab', () => {
+Deno.test('tab', async () => {
 	const str = '\t'
-	assertEquals(encode(str, { tokenMapping, bpe }), [197])
-	assertEquals(decode(encode(str, { tokenMapping, bpe }), { tokenMapping }), str)
+
+	const expectedTokens = [197]
+	const encoded = await encode(str, { getToken, getBpeRank })
+	const decoded = await decode(encoded, { getWord })
+	const len = await tokenLength(str, { getBpeRank })
+
+	assertEquals(encoded, expectedTokens)
+	assertEquals(decoded, str)
+	assertEquals(len, expectedTokens.length)
 })
 
-Deno.test('simple text', () => {
+Deno.test('simple text', async () => {
 	const str = 'This is some text'
-	assertEquals(encode(str, { tokenMapping, bpe }), [1212, 318, 617, 2420])
-	assertEquals(decode(encode(str, { tokenMapping, bpe }), { tokenMapping }), str)
+
+	const expectedTokens = [1212, 318, 617, 2420]
+	const encoded = await encode(str, { getToken, getBpeRank })
+	const decoded = await decode(encoded, { getWord })
+	const len = await tokenLength(str, { getBpeRank })
+
+	assertEquals(encoded, expectedTokens)
+	assertEquals(decoded, str)
+	assertEquals(len, expectedTokens.length)
 })
 
-Deno.test('multi-token word', () => {
+Deno.test('multi-token word', async () => {
 	const str = 'indivisible'
-	assertEquals(encode(str, { tokenMapping, bpe }), [521, 452, 12843])
-	assertEquals(decode(encode(str, { tokenMapping, bpe }), { tokenMapping }), str)
+
+	const expectedTokens = [521, 452, 12843]
+	const encoded = await encode(str, { getToken, getBpeRank })
+	const decoded = await decode(encoded, { getWord })
+	const len = await tokenLength(str, { getBpeRank })
+
+	assertEquals(encoded, expectedTokens)
+	assertEquals(decoded, str)
+	assertEquals(len, expectedTokens.length)
 })
 
-Deno.test('emojis', () => {
+Deno.test('repetition (no cache)', async () => {
+	const str = 'This is some text, This is some text'
+
+	const expectedTokens = [1212, 318, 617, 2420, 11, 770, 318, 617, 2420]
+	const encoded = await encode(str, { getToken, getBpeRank })
+	const decoded = await decode(encoded, { getWord })
+	const len = await tokenLength(str, { getBpeRank })
+
+	assertEquals(encoded, expectedTokens)
+	assertEquals(decoded, str)
+	assertEquals(len, expectedTokens.length)
+})
+
+Deno.test('repetition (with cache)', async () => {
+	const str = 'This is some text, This is some text'
+
+	const expectedTokens = [1212, 318, 617, 2420, 11, 770, 318, 617, 2420]
+	const encoded = await encode(str, { getToken, getBpeRank, cache: new Map<string, string>() })
+	const decoded = await decode(encoded, { getWord })
+	const len = await tokenLength(str, { getBpeRank, cache: new Map<string, string>() })
+
+	assertEquals(encoded, expectedTokens)
+	assertEquals(decoded, str)
+	assertEquals(len, expectedTokens.length)
+})
+
+Deno.test('emojis', async () => {
 	const str = 'hello 👋 world 🌍'
 
-	assertEquals(encode(str, { tokenMapping, bpe }), [31373, 50169, 233, 995, 12520, 234, 235])
-	assertEquals(decode(encode(str, { tokenMapping, bpe }), { tokenMapping }), str)
+	const expectedTokens = [31373, 50169, 233, 995, 12520, 234, 235]
+	const encoded = await encode(str, { getToken, getBpeRank })
+	const decoded = await decode(encoded, { getWord })
+	const len = await tokenLength(str, { getBpeRank })
+
+	assertEquals(encoded, expectedTokens)
+	assertEquals(decoded, str)
+	assertEquals(len, expectedTokens.length)
 })
 
-Deno.test('properties of Object', () => {
+Deno.test('properties of Object', async () => {
 	const str = 'toString constructor hasOwnProperty valueOf'
 
-	assertEquals(encode(str, { tokenMapping, bpe }), [1462, 10100, 23772, 468, 23858, 21746, 1988, 5189])
-	assertEquals(decode(encode(str, { tokenMapping, bpe }), { tokenMapping }), str)
+	const expectedTokens = [1462, 10100, 23772, 468, 23858, 21746, 1988, 5189]
+	const encoded = await encode(str, { getToken, getBpeRank })
+	const decoded = await decode(encoded, { getWord })
+	const len = await tokenLength(str, { getBpeRank })
+
+	assertEquals(encoded, expectedTokens)
+	assertEquals(decoded, str)
+	assertEquals(len, expectedTokens.length)
 })

@@ -1,6 +1,7 @@
 {
 	"imports": {
 		"std/": "https://deno.land/std@0.178.0/",
-		"gpt-encoder-deno/": "./"
+		"https://esm.sh/gh/clearlylocal/gpt-encoder-deno@$VERSION/": "./",
+		"https://raw.githubusercontent.com/clearlylocal/gpt-encoder-deno/$VERSION/": "./"
 	}
 }
