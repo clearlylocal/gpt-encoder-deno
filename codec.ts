@@ -1,16 +1,20 @@
 // This file includes code which was modified from https://github.com/openai/gpt-2
 
-const KEYABLE_PAIR_DELIM = '\x1f' // unit separator control char
+export const KEYABLE_PAIR_DELIM = ' ' // space
 
 type Pair = [string, string]
-type KeyablePair = string & { readonly StringTuple: unique symbol }
+type KeyablePair = string & { readonly KeyablePair: unique symbol }
+
+function reverseObj<K extends string | number, V extends string | number>(x: Record<K, V>): Record<V, K> {
+	return Object.fromEntries(Object.entries(x).map((x) => x.reverse()))
+}
 
 const parseKeyablePair = (stringPair: KeyablePair) => {
 	return stringPair.split(KEYABLE_PAIR_DELIM) as Pair
 }
 
-const pairToKeyable = (tuple: [string, string]) => {
-	return tuple.join(KEYABLE_PAIR_DELIM) as KeyablePair
+export const pairToKeyable = (pair: [string, string]) => {
+	return pair.join(KEYABLE_PAIR_DELIM) as KeyablePair
 }
 
 const range = (x: number, y: number) => {
@@ -36,9 +40,6 @@ const textDecoder = new TextDecoder()
 const decodeStr = (arr: Uint8Array | number[]) => {
 	return textDecoder.decode(new Uint8Array(arr))
 }
-
-const zipPairs = (pairs: [string, string][], range: number[]) =>
-	Object.fromEntries(pairs.map((pair, i) => [pairToKeyable(pair), range[i]])) as Record<KeyablePair, number>
 
 function bytesToUnicode() {
 	const bs = range(ord('!'), ord('~') + 1).concat(range(ord('¡'), ord('¬') + 1), range(ord('®'), ord('ÿ') + 1))
@@ -73,50 +74,46 @@ const pat = /'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!
 const byteEncoder = bytesToUnicode()
 const byteDecoder = reverseObj(byteEncoder)
 
-const cache = new Map<string, string>()
-
-const bpeCache = new Map<string, Record<KeyablePair, number>>()
-
-const getBpeMerges = (bpeContent: string) => bpeContent
-	.split('\n')
-	.slice(1, -1)
-	.map((x) => x.split(/(\s+)/).filter((e) => e.trim().length)) as [string, string][]
-
-globalThis.Deno?.test('getBpeMerges', async () => {
-	const filePath = './vocab-gpt3.bpe'
-
-	await eval(`(async () => {
-		const { assert, assertEquals } = await import('https://deno.land/std@0.184.0/testing/asserts.ts')
-
-		const bpe = await Deno.readTextFile('${filePath}')
-
-		assert(!bpe.includes('${KEYABLE_PAIR_DELIM}'))
-
-		for (const pair of getBpeMerges(bpe)) {
-			assertEquals(pair.length, 2)
-			assert(pair[0])
-			assert(pair[1])
-		}
-	})()`)
-})
-
-function getBpeRanks(bpeContent: string) {
-	let ranks = bpeCache.get(bpeContent)
-
-	if (!ranks) {
-		const bpeMerges = getBpeMerges(bpeContent)
-
-		ranks = zipPairs(bpeMerges, range(0, bpeMerges.length))
-		bpeCache.set(bpeContent, ranks)
-	}
-
-	return ranks
+type Cache = {
+	get(k: string): string | undefined | null
+	set(k: string, v: string): void
 }
 
-function bpe(token: string, bpeContent: string) {
-	const bpeRanks = getBpeRanks(bpeContent)
+export const getBpePairs = (bpeContent: string) =>
+	bpeContent
+		.trimEnd()
+		.split('\n')
+		.slice(1) // 1st line is version number
+		.map((x) => x.split(/(\s+)/).filter((e) => e.trim().length)) as [string, string][]
 
-	if (cache.has(token)) return cache.get(token)!
+export function getBpeRanks(bpe: string) {
+	return [...getBpePairs(bpe).entries()].map(([rank, pair]) => [pair.join(KEYABLE_PAIR_DELIM), rank] as const) as [string, number][]
+}
+
+export function getBpeRankFrom(bpeContent: string): GetBpeRank {
+	const ranks = Object.assign(Object.create(null), Object.fromEntries(getBpeRanks(bpeContent)))
+
+	return (keyablePair: KeyablePair) => Promise.resolve(ranks[keyablePair])
+}
+
+export function getTokenFrom(tokenMapping: Record<string, number>): GetToken {
+	const m: typeof tokenMapping = Object.assign(Object.create(null), tokenMapping)
+
+	return (str: string) => Promise.resolve(m[str])
+}
+
+export function getWordFrom(tokenMapping: Record<string, number>): GetWord {
+	const o = reverseObj(tokenMapping)
+	const m: typeof o = Object.assign(Object.create(null), o)
+
+	return (n: number) => Promise.resolve(m[n])
+}
+
+export type GetBpeRank = (keyablePair: KeyablePair) => Promise<number | undefined | null>
+
+async function bpe(token: string, getBpeRank: GetBpeRank, cache: Cache) {
+	const cached = cache.get(token)
+	if (cached != null) return cached
 
 	let word = token.split('')
 	let pairs = getPairs(word)
@@ -125,13 +122,13 @@ function bpe(token: string, bpeContent: string) {
 		const minPairs: Record<number, KeyablePair> = {}
 
 		for (const pair of pairs.values()) {
-			const rank = bpeRanks[pair]
-			minPairs[isNaN(rank) ? 10e10 : rank] = pair
+			const rank = await getBpeRank(pair)
+			minPairs[isNaN(rank as number) ? 10e10 : (rank as number)] = pair
 		}
 
 		const bigram = minPairs[Math.min(...Object.keys(minPairs).map(Number))]
 
-		if (!(bigram in bpeRanks)) break
+		if ((await getBpeRank(bigram)) == null) break
 
 		const [first, second] = parseKeyablePair(bigram)
 
@@ -170,41 +167,35 @@ function bpe(token: string, bpeContent: string) {
 	return joined
 }
 
-type TokenMapping = Record<string, number>
-type EncodeOptions = { tokenMapping: TokenMapping; bpe: string }
-type DecodeOptions = { tokenMapping: TokenMapping }
+export type GetToken = (word: string) => Promise<number>
+export type GetWord = (token: number) => Promise<string>
 
-export function encode(text: string, { tokenMapping, bpe: bpeContent }: EncodeOptions): number[] {
-	let bpeTokens: number[] = []
+type WordsOptions = { getBpeRank: GetBpeRank; cache?: Cache }
+type EncodeOptions = WordsOptions & { getToken: GetToken }
+type DecodeOptions = { getWord: GetWord }
+
+export async function encode(text: string, { getToken, getBpeRank, cache }: EncodeOptions): Promise<number[]> {
+	return Promise.all((await words(text, { getBpeRank, cache })).map((x) => getToken(x)))
+}
+
+export async function decode(tokens: number[], { getWord }: DecodeOptions) {
+	let text = (await Promise.all(tokens.map((x) => getWord(x)))).join('')
+	text = decodeStr(text.split('').map((x) => byteDecoder[x]))
+	return text
+}
+
+export async function tokenLength(text: string, { getBpeRank, cache }: WordsOptions): Promise<number> {
+	return (await words(text, { getBpeRank, cache })).length
+}
+
+async function words(text: string, { getBpeRank, cache }: WordsOptions): Promise<string[]> {
+	cache ??= new Map<string, string>()
+
+	let allWords: string[] = []
 	const matches = Array.from(text.matchAll(pat)).map((x) => x[0])
 	for (let token of matches) {
 		token = [...encodeStr(token)].map((x) => byteEncoder[x]).join('')
-		bpeTokens = bpeTokens.concat(bpe(token, bpeContent).split(' ').map((x) => tokenMapping[x]))
+		allWords = allWords.concat(await Promise.all((await bpe(token, getBpeRank, cache)).split(' ')))
 	}
-	return bpeTokens
-}
-
-function reverseObj<K extends string | number, V extends string | number>(x: Record<K, V>): Record<V, K> {
-	return Object.fromEntries(Object.entries(x).map((x) => x.reverse()))
-}
-
-const decoderMappingCache = new Map()
-
-const toDecoderMapping = (encoderMapping: TokenMapping): Record<string, string> => {
-	let decoderMapping = decoderMappingCache.get(encoderMapping)
-
-	if (!decoderMapping) {
-		decoderMapping = reverseObj(encoderMapping)
-		decoderMappingCache.set(encoderMapping, decoderMapping)
-	}
-
-	return decoderMapping
-}
-
-export function decode(tokens: number[], { tokenMapping }: DecodeOptions) {
-	const decoderMapping = toDecoderMapping(tokenMapping)
-
-	let text = tokens.map((x) => decoderMapping[x]).join('')
-	text = decodeStr(text.split('').map((x) => byteDecoder[x]))
-	return text
+	return allWords
 }
